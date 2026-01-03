@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SKY HYBRID SYSTEM V3</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"></script>
+    <style>
+        :root {
+            --neon-blue: #00f3ff;
+            --neon-red: #ff003c;
+            --dark-bg: #0a0b10;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--dark-bg);
+            color: white;
+            overflow: hidden;
+        }
+
+        .page {
+            display: none;
+            height: 100vh;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .active { display: flex; }
+
+        /* --- Halaman 1: Butterfly Splash --- */
+        .butterfly-container {
+            position: relative;
+            width: 100px;
+            height: 100px;
+            perspective: 1000px;
+        }
+
+        .wing {
+            position: absolute;
+            width: 50px;
+            height: 80px;
+            background: var(--neon-blue);
+            border-radius: 50% 50% 0 50%;
+            opacity: 0.8;
+            box-shadow: 0 0 20px var(--neon-blue);
+            animation: flap 0.5s infinite alternate ease-in-out;
+        }
+
+        .right {
+            left: 50px;
+            border-radius: 50% 50% 50% 0;
+            transform-origin: left center;
+        }
+
+        .left {
+            transform-origin: right center;
+        }
+
+        @keyframes flap {
+            from { transform: rotateY(0deg); }
+            to { transform: rotateY(70deg); }
+        }
+
+        /* --- UI Components --- */
+        .btn {
+            background: transparent;
+            border: 2px solid var(--neon-blue);
+            color: var(--neon-blue);
+            padding: 15px 30px;
+            border-radius: 30px;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+            margin: 10px;
+            width: 200px;
+        }
+
+        .btn:active { transform: scale(0.95); }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .btn-large {
+            height: 100px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.8rem;
+        }
+
+        #log-area {
+            width: 100%;
+            height: 150px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            margin-top: 20px;
+            padding: 10px;
+            font-size: 12px;
+            overflow-y: auto;
+            border-left: 3px solid var(--neon-blue);
+        }
+
+        .status-badge {
+            padding: 5px 20px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+
+        .locked { background: var(--neon-red); color: white; }
+        .unlocked { background: #00ff88; color: black; }
+    </style>
+</head>
+<body>
+
+    <div id="page1" class="page active">
+        <div class="butterfly-container">
+            <div class="wing left"></div>
+            <div class="wing right"></div>
+        </div>
+        <h2 style="margin-top: 30px; letter-spacing: 5px;">SKY V3</h2>
+        <p>Initializing System...</p>
+    </div>
+
+    <div id="page2" class="page">
+        <i class="fab fa-bluetooth-b" style="font-size: 50px; color: var(--neon-blue);"></i>
+        <h3>Bluetooth Connection</h3>
+        <button class="btn" onclick="connectBLE()">Hubungkan</button>
+        <div id="auth-section" style="display: none; margin-top: 20px; text-align: center;">
+            <input type="text" id="id-input" placeholder="Masukkan ID ESP32" style="padding: 10px; border-radius: 5px; border: none;">
+            <br>
+            <button class="btn" onclick="verifyID()">Verifikasi ID</button>
+        </div>
+    </div>
+
+    <div id="page3" class="page">
+        <div id="lock-status" class="status-badge locked">LOCKED</div>
+        
+        <div class="dashboard-grid">
+            <button class="btn btn-large" onclick="sendCommand('U')"><i class="fas fa-unlock"></i><br>UNLOCK</button>
+            <button class="btn btn-large" onclick="sendCommand('L')"><i class="fas fa-lock"></i><br>LOCK</button>
+            <button class="btn btn-large" onclick="sendCommand('1')"><i class="fas fa-bolt"></i><br>STARTER</button>
+            <button class="btn btn-large" onclick="sendCommand('0')"><i class="fas fa-power-off"></i><br>ENGINE OFF</button>
+        </div>
+
+        <button class="btn" onclick="alert('Buka setting WiFi...')"><i class="fas fa-wifi"></i> SETTING WIFI</button>
+        <button class="btn" onclick="sendCommand('G')" style="border-color: #ff9f43; color: #ff9f43;"><i class="fas fa-sync"></i> SYNC LOGS</button>
+
+        <div id="log-area">
+            [System Ready] Menunggu perintah...
+        </div>
+    </div>
+
+    <script>
+        const DEVICE_OWNER_ID = "SKY-HYBRID-99X-Z1";
+        const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+        const CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+
+        let bleDevice;
+        let bleChar;
+
+        // Auto transition dari Splash ke Connect
+        setTimeout(() => {
+            showPage('page2');
+        }, 3000);
+
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+        }
+
+        async function connectBLE() {
+            try {
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'SKY_V3_ULTIMATE' }],
+                    optionalServices: [SERVICE_UUID]
+                });
+                const server = await bleDevice.gatt.connect();
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                bleChar = await service.getCharacteristic(CHAR_UUID);
+                
+                document.getElementById('auth-section').style.display = 'block';
+                addLog("Terhubung ke Bluetooth. Silahkan verifikasi ID.");
+            } catch (error) {
+                addLog("Error: " + error);
+            }
+        }
+
+        function verifyID() {
+            const input = document.getElementById('id-input').value;
+            if (input === DEVICE_OWNER_ID) {
+                showPage('page3');
+            } else {
+                alert("ID Salah! Akses Ditolak.");
+            }
+        }
+
+        async function sendCommand(cmd) {
+            if (!bleChar) return alert("Bluetooth tidak terhubung!");
+            
+            // Format pesan: SKY-HYBRID-99X-Z1:U
+            const message = DEVICE_OWNER_ID + ":" + cmd;
+            const encoder = new TextEncoder();
+            await bleChar.writeValue(encoder.encode(message));
+            
+            addLog("Sent: " + cmd);
+
+            // Update status UI lokal
+            if (cmd === 'U') {
+                document.getElementById('lock-status').innerText = "UNLOCKED";
+                document.getElementById('lock-status').className = "status-badge unlocked";
+            } else if (cmd === 'L' || cmd === '0') {
+                document.getElementById('lock-status').innerText = "LOCKED";
+                document.getElementById('lock-status').className = "status-badge locked";
+            }
+        }
+
+        function addLog(msg) {
+            const logArea = document.getElementById('log-area');
+            logArea.innerHTML += `<div>> ${msg}</div>`;
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+    </script>
+</body>
+</html>
